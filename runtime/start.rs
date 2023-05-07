@@ -42,7 +42,7 @@ fn snek_print(val: i64) -> i64 {
     else {
         println!("Unknown value: {}", val);
     }
-    return val;
+    val
 }
 
 fn main() {

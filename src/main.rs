@@ -131,6 +131,7 @@ fn parse_func(f: &Sexp) -> Func {
     match f {
         Sexp::List(vec) => match &vec[..] {
             [Sexp::Atom(S(func)), Sexp::List(b), e] if func == "fun" => {
+                if b.is_empty() { panic!("Invalid definition") }
                 let args: Vec<String> = b[1..].iter().map(|e| if let Sexp::Atom(S(s)) = e { s.to_string() } else {panic!("Invalid definition")}).collect();
                 if let Sexp::Atom(S(n)) = &b[0] {
                     Func {name: n.to_string(), args: args, expr: parse_expr(e)}
@@ -267,32 +268,32 @@ fn compile_unary_op(o: &Op1, e1: &Expr, c: &Context, mc: &mut MutContext, instrs
 fn compile_binary_op(o: &Op2, e1: &Expr, e2: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
     if matches!(o, Op2::Equal) {
         compile_expr(e2, c, mc, instrs);
-        instrs.push(Instr::Mov(Val::RegOffset(Reg::RSP, 8 * c.si), Val::Reg(Reg::RAX)));
+        instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
         compile_expr(e1, &Context { si: c.si + 1, ..*c }, mc, instrs);
         instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Reg(Reg::RAX)));
-        instrs.push(Instr::Xor(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RSP, 8 * c.si)));
+        instrs.push(Instr::Xor(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RBP, -8 * c.si)));
         instrs.push(Instr::Test(Val::Reg(Reg::RBX), Val::Imm32(1)));
         instrs.push(Instr::Mov(Val::Reg(Reg::RSI), Val::Imm32(1)));
         instrs.push(Instr::J("ne", "my_error".to_string()));
-        instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, 8 * c.si)));
+        instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)));
         instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm32(3)));
         instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(1)));
         instrs.push(Instr::Cmov("e", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
     } else {
         compile_expr(e2, c, mc, instrs);
         check_num(instrs);
-        instrs.push(Instr::Mov(Val::RegOffset(Reg::RSP, 8 * c.si), Val::Reg(Reg::RAX)));
+        instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
         compile_expr(e1, &Context { si: c.si + 1, ..*c }, mc, instrs);
         check_num(instrs);
         let i = match o {
-            Op2::Plus => Instr::Add(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, 8 * c.si)),
-            Op2::Minus => Instr::Sub(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, 8 * c.si)),
+            Op2::Plus => Instr::Add(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)),
+            Op2::Minus => Instr::Sub(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)),
             Op2::Times => {
                 instrs.push(Instr::Sar(Val::Reg(Reg::RAX), Val::Imm32(1)));
-                Instr::Imul(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, 8 * c.si))
+                Instr::Imul(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si))
             },
             _ => {
-                instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RSP, 8 * c.si)));
+                instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)));
                 instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm32(3)));
                 instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(1)));
                 let c = match o {
@@ -321,7 +322,7 @@ fn compile_let(bs: &Vec<(String, Expr)>, e1: &Expr, c: &Context, mc: &mut MutCon
             panic!("Duplicate binding");
         }
         compile_expr(ee, &Context { si: c.si, env: &t, ..*c }, mc, instrs);
-        instrs.push(Instr::Mov(Val::RegOffset(Reg::RSP, 8 * m_si), Val::Reg(Reg::RAX)));
+        instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * m_si), Val::Reg(Reg::RAX)));
         t = t.update(id.to_string(), m_si);
         m_si += 1;
     }
@@ -358,8 +359,8 @@ fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Ins
             let v = *c.env.get(id).expect(format!("Unbound variable identifier {id}").as_str());
             let target = match v {
                 i32::MAX => Val::Reg(Reg::RDI),
-                w if w >= 0 => Val::RegOffset(Reg::RSP, 8 * w),
-                w => Val::RegOffset(Reg::RBP, -8 * (w - 1) )
+                w if w >= 0 => Val::RegOffset(Reg::RBP, -8 * w),
+                w => Val::RegOffset(Reg::RBP, -8 * w)
             };
             instrs.push(Instr::Mov(Val::Reg(Reg::RAX), target))
         },
@@ -371,8 +372,8 @@ fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Ins
             let v = *c.env.get(id).expect(format!("Unbound variable identifier {id}").as_str());
             let target = match v {
                 i32::MAX => panic!("Unbound variable identifier {id}"),
-                w if w >= 0 => Val::RegOffset(Reg::RSP, 8 * w),
-                w => Val::RegOffset(Reg::RBP, -8 * (w - 1))
+                w if w >= 0 => Val::RegOffset(Reg::RBP, -8 * w),
+                w => Val::RegOffset(Reg::RBP, -8 * w)
             };
             instrs.push(Instr::Mov(target, Val::Reg(Reg::RAX)))
         },
@@ -400,7 +401,7 @@ fn compile_call(n: &str, args: &Vec<Expr>, c: &Context, mc: &mut MutContext, ins
         None => panic!("Invalid: Function {n} undefined"),
     }
     if (args.len() % 2 == 1) == c.aligned {
-        instrs.push(Instr::Sub(Val::Reg(Reg::RSP), Val::Imm32(8)));
+        instrs.push(Instr::Push(Val::Imm32(913104)));
     }
     let mut a = args.len() % 2 == 0;
     for e in args.iter().rev() {
@@ -414,7 +415,7 @@ fn compile_call(n: &str, args: &Vec<Expr>, c: &Context, mc: &mut MutContext, ins
 
 fn compile_external_call(n: &str, arg1: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
     // compile_expr(arg1, c, mc, instrs);
-    if c.aligned { instrs.push(Instr::Sub(Val::Reg(Reg::RSP), Val::Imm32(8))); }
+    if c.aligned { instrs.push(Instr::Push(Val::Imm32(913104))); }
     instrs.push(Instr::Push(Val::Reg(Reg::RDI)));
     instrs.push(Instr::Mov(Val::Reg(Reg::RDI), Val::Reg(Reg::RAX)));
     instrs.push(Instr::Call(n.to_string()));
@@ -443,7 +444,7 @@ fn compile_func_body(n: &str, e: &Expr, c: &Context, mc: &mut MutContext, instrs
     instrs.push(Instr::Mov(Val::Reg(Reg::RBP), Val::Reg(Reg::RSP)));
     let d = dep(e);
     instrs.push(Instr::Sub(Val::Reg(Reg::RSP), Val::Imm32(8 * d)));
-    compile_expr(e, &Context { si: 0, aligned: d % 2 == 0, ..*c }, mc, instrs);
+    compile_expr(e, &Context { si: 1, aligned: d % 2 == 0, ..*c }, mc, instrs);
     instrs.push(Instr::Leave);
     instrs.push(Instr::Ret);
 }
@@ -513,13 +514,13 @@ fn compile(p: &Prog) -> String {
     }
 
     for f in fs {
-        let env: im::HashMap<String, i32> = im::HashMap::from_iter(f.args.iter().enumerate().map(|(i, n)| (n.to_string(), -(i as i32 + 1))));
+        let env: im::HashMap<String, i32> = im::HashMap::from_iter(f.args.iter().enumerate().map(|(i, n)| (n.to_string(), -(i as i32 + 2))));
         if env.len() != f.args.len() { panic!("Invalid: Duplicate arguments in function {}", f.name); }
-        compile_func_body(&func_label(f.name.as_str()), &f.expr, &Context { si: 0, env: &env, brake: &nul_brake, fnames: &fnames, aligned: true }, &mut mc, &mut instrs)
+        compile_func_body(&func_label(f.name.as_str()), &f.expr, &Context { si: 1, env: &env, brake: &nul_brake, fnames: &fnames, aligned: true }, &mut mc, &mut instrs)
     }
 
     let mut env: im::HashMap<String, i32> = im::HashMap::unit("input".to_string(), i32::MAX);
-    compile_func_body("our_code_starts_here", e, &Context { si: 0, env: &env, brake: &nul_brake, fnames: &fnames, aligned: true }, &mut mc, &mut instrs);
+    compile_func_body("our_code_starts_here", e, &Context { si: 1, env: &env, brake: &nul_brake, fnames: &fnames, aligned: true }, &mut mc, &mut instrs);
     instrs.iter().map(instr_to_str).collect::<String>()
 }
 
