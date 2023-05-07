@@ -134,7 +134,11 @@ fn parse_func(f: &Sexp) -> Func {
                 if b.is_empty() { panic!("Invalid definition") }
                 let args: Vec<String> = b[1..].iter().map(|e| if let Sexp::Atom(S(s)) = e { s.to_string() } else {panic!("Invalid definition")}).collect();
                 if let Sexp::Atom(S(n)) = &b[0] {
-                    Func {name: n.to_string(), args: args, expr: parse_expr(e)}
+                    if args.iter().all(|s| check_id(s)) {
+                        Func {name: n.to_string(), args: args, expr: parse_expr(e)}
+                    } else {
+                        panic!("Invalid definition")
+                    }
                 } else {
                     panic!("Invalid definition")
                 }
@@ -401,7 +405,7 @@ fn compile_call(n: &str, args: &Vec<Expr>, c: &Context, mc: &mut MutContext, ins
         None => panic!("Invalid: Function {n} undefined"),
     }
     if (args.len() % 2 == 1) == c.aligned {
-        instrs.push(Instr::Push(Val::Imm32(913104)));
+        instrs.push(Instr::Sub(Val::Reg(Reg::RSP), Val::Imm32(8)));
     }
     let mut a = args.len() % 2 == 0;
     for e in args.iter().rev() {
@@ -410,12 +414,12 @@ fn compile_call(n: &str, args: &Vec<Expr>, c: &Context, mc: &mut MutContext, ins
         a = !a;
     }
     instrs.push(Instr::Call(func_label(n)));
-    instrs.push(Instr::Add(Val::Reg(Reg::RSP), Val::Imm32(8 * (args.len() + args.len() % 2) as i32)));
+    instrs.push(Instr::Add(Val::Reg(Reg::RSP), Val::Imm32(8 * (args.len() as i32 + ((args.len() % 2 == 1) == c.aligned) as i32))));
 }
 
 fn compile_external_call(n: &str, arg1: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
     // compile_expr(arg1, c, mc, instrs);
-    if c.aligned { instrs.push(Instr::Push(Val::Imm32(913104))); }
+    if c.aligned { instrs.push(Instr::Sub(Val::Reg(Reg::RSP), Val::Imm32(8))); }
     instrs.push(Instr::Push(Val::Reg(Reg::RDI)));
     instrs.push(Instr::Mov(Val::Reg(Reg::RDI), Val::Reg(Reg::RAX)));
     instrs.push(Instr::Call(n.to_string()));
