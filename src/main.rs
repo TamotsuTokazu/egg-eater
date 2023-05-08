@@ -75,7 +75,7 @@ fn parse_expr(s: &Sexp) -> Expr {
     match s {
         Sexp::Atom(I(n)) => {
             let i = i64::try_from(*n).expect("Invalid literal");
-            if i < -4611686018427387904 || i > 4611686018427387903 {
+            if i < -(1 << 62) || i > (1 << 62) - 1 {
                 panic!("Invalid literal");
             }
             Expr::Number(i)
@@ -103,7 +103,7 @@ fn parse_expr(s: &Sexp) -> Expr {
                 "<=" => Expr::BinOp(Op2::LessEqual, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
                 ">=" => Expr::BinOp(Op2::GreaterEqual, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
                 "=" => Expr::BinOp(Op2::Equal, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
-                _ => panic!("Invalid"),
+                _ => panic!("Unreachable branch"),
             },
             [Sexp::Atom(S(op)), e1, e2] if op == "let" => match e1 {
                     Sexp::List(b) if !b.is_empty() => Expr::Let(b.iter().map(parse_bind).collect(), Box::new(parse_expr(e2))),
@@ -265,7 +265,7 @@ fn compile_unary_op(o: &Op1, e1: &Expr, c: &Context, mc: &mut MutContext, instrs
             instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm64(3)));
             instrs.push(Instr::Cmov("ne", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
         },
-        Op1::Print => compile_external_call("snek_print", e1, c, mc, instrs),
+        Op1::Print => compile_external_call("snek_print", c, mc, instrs),
     }
 }
 
@@ -305,7 +305,7 @@ fn compile_binary_op(o: &Op2, e1: &Expr, e2: &Expr, c: &Context, mc: &mut MutCon
                     Op2::LessEqual => "le",
                     Op2::Greater => "g",
                     Op2::GreaterEqual => "ge",
-                    _ => panic!("Impossible Branch"),
+                    _ => panic!("Unreachable branch"),
                 };
                 Instr::Cmov(c, Val::Reg(Reg::RAX), Val::Reg(Reg::RBX))
             },
@@ -322,12 +322,10 @@ fn compile_let(bs: &Vec<(String, Expr)>, e1: &Expr, c: &Context, mc: &mut MutCon
     let mut t = c.env.clone();
     let mut m_si = c.si;
     for (id, ee) in bs {
-        if !ids.insert(id.to_string()) {
-            panic!("Duplicate binding");
-        }
+        if !ids.insert(id.to_string()) { panic!("Duplicate binding"); }
         compile_expr(ee, &Context { si: c.si, env: &t, ..*c }, mc, instrs);
         instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * m_si), Val::Reg(Reg::RAX)));
-        t = t.update(id.to_string(), m_si);
+        t = t.update(id.to_string(), -m_si);
         m_si += 1;
     }
     compile_expr(e1, &Context { si: m_si, env: &t, ..*c }, mc, instrs);
@@ -363,8 +361,7 @@ fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Ins
             let v = *c.env.get(id).expect(format!("Unbound variable identifier {id}").as_str());
             let target = match v {
                 i32::MAX => Val::Reg(Reg::RDI),
-                w if w >= 0 => Val::RegOffset(Reg::RBP, -8 * w),
-                w => Val::RegOffset(Reg::RBP, -8 * w)
+                w => Val::RegOffset(Reg::RBP, 8 * w),
             };
             instrs.push(Instr::Mov(Val::Reg(Reg::RAX), target))
         },
@@ -376,8 +373,7 @@ fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Ins
             let v = *c.env.get(id).expect(format!("Unbound variable identifier {id}").as_str());
             let target = match v {
                 i32::MAX => panic!("Unbound variable identifier {id}"),
-                w if w >= 0 => Val::RegOffset(Reg::RBP, -8 * w),
-                w => Val::RegOffset(Reg::RBP, -8 * w)
+                w => Val::RegOffset(Reg::RBP, 8 * w),
             };
             instrs.push(Instr::Mov(target, Val::Reg(Reg::RAX)))
         },
@@ -389,9 +385,7 @@ fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Ins
         Expr::If(cond, thn, els) => compile_if(cond, thn, els, c, mc, instrs),
         Expr::Loop(e1) => compile_loop(e1, c, mc, instrs),
         Expr::Break(e1) => {
-            if c.brake == "" {
-                panic!("break");
-            }
+            if c.brake == "" { panic!("break"); }
             compile_expr(e1, c, mc, instrs);
             instrs.push(Instr::J("", c.brake.to_string()));
         },
@@ -417,7 +411,8 @@ fn compile_call(n: &str, args: &Vec<Expr>, c: &Context, mc: &mut MutContext, ins
     instrs.push(Instr::Add(Val::Reg(Reg::RSP), Val::Imm32(8 * (args.len() as i32 + ((args.len() % 2 == 1) == c.aligned) as i32))));
 }
 
-fn compile_external_call(n: &str, arg1: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
+// argument is in RAX
+fn compile_external_call(n: &str, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
     // compile_expr(arg1, c, mc, instrs);
     if c.aligned { instrs.push(Instr::Sub(Val::Reg(Reg::RSP), Val::Imm32(8))); }
     instrs.push(Instr::Push(Val::Reg(Reg::RDI)));
@@ -518,7 +513,7 @@ fn compile(p: &Prog) -> String {
     }
 
     for f in fs {
-        let env: im::HashMap<String, i32> = im::HashMap::from_iter(f.args.iter().enumerate().map(|(i, n)| (n.to_string(), -(i as i32 + 2))));
+        let env: im::HashMap<String, i32> = im::HashMap::from_iter(f.args.iter().enumerate().map(|(i, n)| (n.to_string(), i as i32 + 2)));
         if env.len() != f.args.len() { panic!("Invalid: Duplicate arguments in function {}", f.name); }
         compile_func_body(&func_label(f.name.as_str()), &f.expr, &Context { si: 1, env: &env, brake: &nul_brake, fnames: &fnames, aligned: true }, &mut mc, &mut instrs)
     }

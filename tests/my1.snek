@@ -1,0 +1,7 @@
+(fun (adder n) (block
+    (if (<= n 0)
+        0
+        (+ n (adder (- n 1)))
+    )
+))
+(adder input)

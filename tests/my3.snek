@@ -1,0 +1,8 @@
+(fun (fib n a b) 
+    (block
+    (print a)
+    (print n)
+    (if (<= n 0) a (fib (- n 1) b (+ a b)))
+    )
+)
+(fib input 1 1)
