@@ -50,9 +50,52 @@ success_tests! {
         input: "10",
         expected: "1\n10\n1\n9\n2\n8\n3\n7\n5\n6\n8\n5\n13\n4\n21\n3\n34\n2\n55\n1\n89\n0\n89\n",
     },
+    {
+        name: my4_normal,
+        file: "my4.snek",
+        input: "2",
+        expected: "16\n16",
+    },
+    {
+        name: my5_normal,
+        file: "my5.snek",
+        input: "10",
+        expected: "3628800",
+    },
+    {
+        name: my7,
+        file: "my7.snek",
+        input: "10",
+        expected: "3628800",
+    },
 }
 
-runtime_error_tests! {}
+runtime_error_tests! {
+    {
+        name: my4_overflow,
+        file: "my4.snek",
+        input: "2305843009213693952",
+        expected: "overflow",
+    },
+    {
+        name: my4_argument,
+        file: "my4.snek",
+        input: "true",
+        expected: "invalid argument",
+    },
+    {
+        name: my5_overflow,
+        file: "my5.snek",
+        input: "100",
+        expected: "overflow",
+    },
+    {
+        name: my5_argument,
+        file: "my5.snek",
+        input: "true",
+        expected: "invalid argument",
+    },
+}
 
 static_error_tests! {
     {
@@ -72,7 +115,17 @@ static_error_tests! {
     },
     {
         name: err3_wrong_number_of_args,
-        file: "err2.snek",
+        file: "err3.snek",
+        expected: "",
+    },
+    {
+        name: err4_input_in_fun,
+        file: "err4.snek",
+        expected: "",
+    },
+    {
+        name: err5_function_undefined,
+        file: "err5.snek",
         expected: "",
     },
 }

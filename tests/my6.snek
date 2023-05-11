@@ -1,0 +1,2 @@
+(fun (f a b) (block (print a) (print (= a b))))
+(f input 1)

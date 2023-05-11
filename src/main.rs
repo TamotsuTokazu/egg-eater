@@ -323,7 +323,7 @@ fn compile_let(bs: &Vec<(String, Expr)>, e1: &Expr, c: &Context, mc: &mut MutCon
     let mut m_si = c.si;
     for (id, ee) in bs {
         if !ids.insert(id.to_string()) { panic!("Duplicate binding"); }
-        compile_expr(ee, &Context { si: c.si, env: &t, ..*c }, mc, instrs);
+        compile_expr(ee, &Context { si: m_si, env: &t, ..*c }, mc, instrs);
         instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * m_si), Val::Reg(Reg::RAX)));
         t = t.update(id.to_string(), -m_si);
         m_si += 1;
