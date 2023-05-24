@@ -43,6 +43,8 @@ enum Expr {
     Set(String, Box<Expr>),
     Block(Vec<Expr>),
     Call(String, Vec<Expr>),
+    Tuple(Vec<Expr>),
+    Index(Box<Expr>, Box<Expr>),
 }
 
 struct Func {
@@ -86,6 +88,8 @@ fn parse_expr(s: &Sexp) -> Expr {
         Sexp::List(vec) => match &vec[..] {
             [Sexp::Atom(S(op))] if op == "block" => panic!("Invalid block expression"),
             [Sexp::Atom(S(op)), exprs @ ..] if op == "block" => Expr::Block(exprs.into_iter().map(parse_expr).collect()),
+            [Sexp::Atom(S(op))] if op == "tuple" => Expr::Tuple(vec![]),
+            [Sexp::Atom(S(op)), exprs @ ..] if op == "tuple" => Expr::Tuple(exprs.into_iter().map(parse_expr).collect()),
             [Sexp::Atom(S(op)), e] if OP1NAMES.contains(&op.as_str()) => match op.as_str() {
                 "add1" => Expr::UnOp(Op1::Add1, Box::new(parse_expr(e))),
                 "sub1" => Expr::UnOp(Op1::Sub1, Box::new(parse_expr(e))),
@@ -113,6 +117,7 @@ fn parse_expr(s: &Sexp) -> Expr {
                     Sexp::Atom(S(n)) => Expr::Set(n.to_string(), Box::new(parse_expr(e2))),
                     _ => panic!("Invalid set! expression"),
                 },
+            [Sexp::Atom(S(op)), e1, e2] if op == "index" => Expr::Index(Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
             [Sexp::Atom(S(op)), e] if op == "loop" => Expr::Loop(Box::new(parse_expr(e))),
             [Sexp::Atom(S(op)), e] if op == "break" => Expr::Break(Box::new(parse_expr(e))),
             [Sexp::Atom(S(op)), cond, thn, els] if op == "if" => Expr::If(
@@ -166,6 +171,7 @@ enum Val {
     Imm32(i32),
     Imm64(i64),
     RegOffset(Reg, i32),
+    EffectiveAddr(Reg, Reg, i32, i32),
 }
 
 #[derive(Debug)]
@@ -178,6 +184,7 @@ enum Reg {
     RDI,
     RSP,
     RBP,
+    R15,
 }
 
 #[derive(Debug)]
@@ -353,6 +360,32 @@ fn compile_loop(e1: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<In
     instrs.push(Instr::Label(led));
 }
 
+fn compile_tuple(es: &Vec<Expr>, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
+    let mut m_si = c.si;
+    for e in es {
+        compile_expr(e, &Context { si: m_si, ..*c }, mc, instrs);
+        instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * m_si), Val::Reg(Reg::RAX)));
+        m_si += 1;
+    }
+    instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(es.len() as i64)));
+    instrs.push(Instr::Mov(Val::RegOffset(Reg::R15, 0), Val::Reg(Reg::RAX)));
+    for i in 0..es.len() as i32 {
+        instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * (c.si + i))));
+        instrs.push(Instr::Mov(Val::RegOffset(Reg::R15, 8 * (i + 1)), Val::Reg(Reg::RAX)));
+    }
+    instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Reg(Reg::R15)));
+    instrs.push(Instr::Add(Val::Reg(Reg::R15), Val::Imm32(8 * (es.len() as i32 + 1))));
+}
+
+fn compile_index(e: &Expr, i: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
+    compile_expr(i, c, mc, instrs);
+    instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
+    compile_expr(e, &Context { si: c.si + 1, ..*c }, mc, instrs);
+    instrs.push(Instr::And(Val::Reg(Reg::RAX), Val::Imm32(-8)));
+    instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RBP, -8 * c.si)));
+    instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::EffectiveAddr(Reg::RAX, Reg::RBX, 8, 8)))
+}
+
 fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
     match e {
         Expr::Number(n) => instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(n << 1))),
@@ -389,7 +422,9 @@ fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Ins
             compile_expr(e1, c, mc, instrs);
             instrs.push(Instr::J("", c.brake.to_string()));
         },
-        Expr::Call(n, args) => compile_call(n, args, c, mc, instrs)
+        Expr::Call(n, args) => compile_call(n, args, c, mc, instrs),
+        Expr::Tuple(es) => compile_tuple(es, c, mc, instrs),
+        Expr::Index(e1, i) => compile_index(e1, i, c, mc, instrs),
     }
 }
 
@@ -428,12 +463,14 @@ fn dep(e: &Expr) -> i32 {
         Expr::UnOp(_, e1) => dep(e1),
         Expr::BinOp(_, e1, e2) => dep(e2).max(dep(e1) + 1),
         Expr::Let(bs, e1) => bs.iter().enumerate().map(|(i, (_, e))| dep(e) + i as i32).max().unwrap_or_default().max(dep(e1) + bs.len() as i32),
-        Expr::Set(_, e1) => 0,
+        Expr::Set(_, e1) => dep(e1),
         Expr::Block(es) => es.iter().map(dep).max().unwrap_or_default(),
         Expr::If(cond, thn, els) => dep(cond).max(dep(thn)).max(dep(els)),
         Expr::Loop(e1) => dep(e1),
         Expr::Break(e1) => dep(e1),
         Expr::Call(_, es) => es.iter().map(dep).max().unwrap_or_default(),
+        Expr::Tuple(es) => es.iter().enumerate().map(|(i, e)| dep(e) + i as i32).max().unwrap_or_default().max(es.len() as i32),
+        Expr::Index(e1, e2) => dep(e2).max(dep(e1) + 1)
     }
 }
 
@@ -483,7 +520,12 @@ fn val_to_str(v: &Val) -> String {
             } else {
                 format!("[{} - {}]", rs, -n)
             }
-        }
+        },
+        Val::EffectiveAddr(b, i, s, d) => {
+            let bs = reg_to_str(b);
+            let is = reg_to_str(i);
+            format!("[{} + {} * {} + {}]", bs, is, s, d)
+        },
     }
 }
 
@@ -497,6 +539,7 @@ fn reg_to_str(r: &Reg) -> &str {
         Reg::RDI => "rdi",
         Reg::RSP => "rsp",
         Reg::RBP => "rbp",
+        Reg::R15 => "r15",
     }
 }
 
@@ -518,8 +561,11 @@ fn compile(p: &Prog) -> String {
         compile_func_body(&func_label(f.name.as_str()), &f.expr, &Context { si: 1, env: &env, brake: &nul_brake, fnames: &fnames, aligned: true }, &mut mc, &mut instrs)
     }
 
+    instrs.push(Instr::Label("our_code_starts_here".to_string()));
+    instrs.push(Instr::Mov(Val::Reg(Reg::R15), Val::Reg(Reg::RSI)));
+
     let mut env: im::HashMap<String, i32> = im::HashMap::unit("input".to_string(), i32::MAX);
-    compile_func_body("our_code_starts_here", e, &Context { si: 1, env: &env, brake: &nul_brake, fnames: &fnames, aligned: true }, &mut mc, &mut instrs);
+    compile_func_body("__our_code_starts_here", e, &Context { si: 1, env: &env, brake: &nul_brake, fnames: &fnames, aligned: true }, &mut mc, &mut instrs);
     instrs.iter().map(instr_to_str).collect::<String>()
 }
 

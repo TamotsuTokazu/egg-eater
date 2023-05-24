@@ -86,15 +86,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "diamondback"
-version = "0.1.0"
-dependencies = [
- "im",
- "prettydiff",
- "sexp",
-]
-
-[[package]]
 name = "dirs-next"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -113,6 +104,15 @@ dependencies = [
  "libc",
  "redox_users",
  "winapi",
+]
+
+[[package]]
+name = "egg-eater"
+version = "0.1.0"
+dependencies = [
+ "im",
+ "prettydiff",
+ "sexp",
 ]
 
 [[package]]
