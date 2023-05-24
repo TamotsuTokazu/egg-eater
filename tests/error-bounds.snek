@@ -1,0 +1,4 @@
+(let ((i 0) (x (tuple 1 20 300 4000))) (loop (block
+    (print (index x i))
+    (set! i (add1 i))
+)))

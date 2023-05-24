@@ -15,6 +15,7 @@ pub extern "C" fn snek_error(errcode: i64) {
     let err_message = match errcode {
         1 => "invalid argument".to_string(),
         2 => "overflow".to_string(),
+        3 => "index out of range".to_string(),
         _ => format!("error code {errcode}"),
     };
     eprintln!("an error ocurred {err_message}");
@@ -23,8 +24,8 @@ pub extern "C" fn snek_error(errcode: i64) {
 
 fn parse_input(input: &str) -> i64 {
     // TODO: parse the input string into internal value representation
-    if input == "true" {3}
-    else if input == "false" {1}
+    if input == "true" {7}
+    else if input == "false" {3}
     else {
         let i = input.parse::<i64>().unwrap();
         if i < -4611686018427387904 || i > 4611686018427387903 {
@@ -34,14 +35,28 @@ fn parse_input(input: &str) -> i64 {
     }
 }
 
+fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
+    if val == 7 { "true".to_string()}
+    else if val == 3 { "false".to_string() }
+    else if val % 2 == 0 { format!("{}", val >> 1) }
+    else if val == 1 { "()".to_string() }
+    else if val & 1 == 1 {
+        if seen.contains(&val) { "(...)".to_string() }
+        else {
+            seen.push(val);
+            let addr = (val - 1) as *const i64;
+            let len = unsafe { *addr } >> 1;
+            let s = (1..len as isize + 1).map(|i| snek_str(unsafe {*addr.offset(i)}, seen)).collect::<Vec<_>>().join(" ");
+            seen.pop();
+            format!("({})", s)
+        }
+    } else { format!("Unknown value: {}", val) }
+}
+
 #[export_name = "\x01snek_print"]
 fn snek_print(val: i64) -> i64 {
-    if val == 3 {println!("true");}
-    else if val == 1 {println!("false");}
-    else if val % 2 == 0 {println!("{}", val >> 1);}
-    else {
-        println!("Unknown value: {}", val);
-    }
+    let mut seen = Vec::<i64>::new();
+    println!("{}", snek_str(val, &mut seen));
     val
 }
 

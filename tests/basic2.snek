@@ -1,0 +1,13 @@
+(let ((n 100000) (i 0)) (loop
+    (if (>= i n)
+        (break 0)
+        (block
+            (set! i (add1 i))
+            (let ((z (tuple 1 20 300))) (
+                block
+                (print z)
+                (print (index z 1))
+            ))
+        )
+    )
+))

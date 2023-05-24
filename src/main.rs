@@ -226,10 +226,12 @@ fn check_num(instrs: &mut Vec<Instr>) {
     instrs.push(Instr::J("ne", "my_error".to_string()));
 }
 
-fn check_bool(instrs: &mut Vec<Instr>) {
-    instrs.push(Instr::Test(Val::Reg(Reg::RAX), Val::Imm64(1)));
+fn check_mem(instrs: &mut Vec<Instr>) {
+    instrs.push(Instr::Mov(Val::Reg(Reg::RSI), Val::Reg(Reg::RAX)));
+    instrs.push(Instr::And(Val::Reg(Reg::RSI), Val::Imm64(3)));
+    instrs.push(Instr::Cmp(Val::Reg(Reg::RSI), Val::Imm64(1)));
     instrs.push(Instr::Mov(Val::Reg(Reg::RSI), Val::Imm64(1)));
-    instrs.push(Instr::J("e", "my_error".to_string()));
+    instrs.push(Instr::J("ne", "my_error".to_string()));
 }
 
 fn check_overflow(instrs: &mut Vec<Instr>) {
@@ -260,16 +262,18 @@ fn compile_unary_op(o: &Op1, e1: &Expr, c: &Context, mc: &mut MutContext, instrs
             instrs.push(Instr::Sub(Val::Reg(Reg::RAX), Val::Imm32(2)));
             check_overflow(instrs);
         },
+
+        // bool here
         Op1::IsNum => {
             instrs.push(Instr::Test(Val::Reg(Reg::RAX), Val::Imm64(1)));
-            instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(1)));
-            instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm64(3)));
+            instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(3)));
+            instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm64(7)));
             instrs.push(Instr::Cmov("e", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
         },
         Op1::IsBool => {
             instrs.push(Instr::Test(Val::Reg(Reg::RAX), Val::Imm64(1)));
-            instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(1)));
-            instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm64(3)));
+            instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(3)));
+            instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm64(7)));
             instrs.push(Instr::Cmov("ne", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
         },
         Op1::Print => compile_external_call("snek_print", c, mc, instrs),
@@ -281,14 +285,14 @@ fn compile_binary_op(o: &Op2, e1: &Expr, e2: &Expr, c: &Context, mc: &mut MutCon
         compile_expr(e2, c, mc, instrs);
         instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
         compile_expr(e1, &Context { si: c.si + 1, ..*c }, mc, instrs);
-        instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Reg(Reg::RAX)));
-        instrs.push(Instr::Xor(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RBP, -8 * c.si)));
-        instrs.push(Instr::Test(Val::Reg(Reg::RBX), Val::Imm32(1)));
-        instrs.push(Instr::Mov(Val::Reg(Reg::RSI), Val::Imm32(1)));
-        instrs.push(Instr::J("ne", "my_error".to_string()));
+        // instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Reg(Reg::RAX)));
+        // instrs.push(Instr::Xor(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RBP, -8 * c.si)));
+        // instrs.push(Instr::Test(Val::Reg(Reg::RBX), Val::Imm32(1)));
+        // instrs.push(Instr::Mov(Val::Reg(Reg::RSI), Val::Imm32(1)));
+        // instrs.push(Instr::J("ne", "my_error".to_string()));
         instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)));
-        instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm32(3)));
-        instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(1)));
+        instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm32(7)));
+        instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(3)));
         instrs.push(Instr::Cmov("e", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
     } else {
         compile_expr(e2, c, mc, instrs);
@@ -304,9 +308,11 @@ fn compile_binary_op(o: &Op2, e1: &Expr, e2: &Expr, c: &Context, mc: &mut MutCon
                 Instr::Imul(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si))
             },
             _ => {
+
+                // bool here
                 instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)));
-                instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm32(3)));
-                instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(1)));
+                instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm32(7)));
+                instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(3)));
                 let c = match o {
                     Op2::Less => "l",
                     Op2::LessEqual => "le",
@@ -342,7 +348,9 @@ fn compile_if(cond: &Expr, thn: &Expr, els: &Expr, c: &Context, mc: &mut MutCont
     let lend = new_label(&mut mc.label, "ifend");
         let lelse = new_label(&mut mc.label, "ifelse");
         compile_expr(cond, c, mc, instrs);
-        instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::Imm32(1)));
+
+        // bool here
+        instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::Imm32(3)));
         instrs.push(Instr::J("e", lelse.to_string()));
         compile_expr(thn, c, mc, instrs);
         instrs.push(Instr::J("", lend.to_string()));
@@ -361,35 +369,59 @@ fn compile_loop(e1: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<In
 }
 
 fn compile_tuple(es: &Vec<Expr>, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
-    let mut m_si = c.si;
-    for e in es {
-        compile_expr(e, &Context { si: m_si, ..*c }, mc, instrs);
-        instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * m_si), Val::Reg(Reg::RAX)));
-        m_si += 1;
+    if es.is_empty() {
+        instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(1)));
+    } else {
+        let mut m_si = c.si;
+        for e in es {
+            compile_expr(e, &Context { si: m_si, ..*c }, mc, instrs);
+            instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * m_si), Val::Reg(Reg::RAX)));
+            m_si += 1;
+        }
+        instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64((es.len() as i64) << 1)));
+        instrs.push(Instr::Mov(Val::RegOffset(Reg::R15, 0), Val::Reg(Reg::RAX)));
+        for i in 0..es.len() as i32 {
+            instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * (c.si + i))));
+            instrs.push(Instr::Mov(Val::RegOffset(Reg::R15, 8 * (i + 1)), Val::Reg(Reg::RAX)));
+        }
+        instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Reg(Reg::R15)));
+        instrs.push(Instr::Xor(Val::Reg(Reg::RAX), Val::Imm32(1)));
+        instrs.push(Instr::Add(Val::Reg(Reg::R15), Val::Imm32(8 * (es.len() as i32 + 1))));
     }
-    instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(es.len() as i64)));
-    instrs.push(Instr::Mov(Val::RegOffset(Reg::R15, 0), Val::Reg(Reg::RAX)));
-    for i in 0..es.len() as i32 {
-        instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * (c.si + i))));
-        instrs.push(Instr::Mov(Val::RegOffset(Reg::R15, 8 * (i + 1)), Val::Reg(Reg::RAX)));
-    }
-    instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Reg(Reg::R15)));
-    instrs.push(Instr::Add(Val::Reg(Reg::R15), Val::Imm32(8 * (es.len() as i32 + 1))));
 }
 
 fn compile_index(e: &Expr, i: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
     compile_expr(i, c, mc, instrs);
+    check_num(instrs);
     instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
     compile_expr(e, &Context { si: c.si + 1, ..*c }, mc, instrs);
-    instrs.push(Instr::And(Val::Reg(Reg::RAX), Val::Imm32(-8)));
+
+    // check tuple
+    check_mem(instrs);
+
+    // index-out-of-range error code
+    instrs.push(Instr::Mov(Val::Reg(Reg::RSI), Val::Imm64(3)));
+
+    // check empty
+    instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::Imm32(1)));
+    instrs.push(Instr::J("e", "my_error".to_string()));
+
+    // load index
     instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RBP, -8 * c.si)));
-    instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::EffectiveAddr(Reg::RAX, Reg::RBX, 8, 8)))
+    instrs.push(Instr::And(Val::Reg(Reg::RAX), Val::Imm32(-8)));
+
+    // check len
+    instrs.push(Instr::Cmp(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RAX, 0)));
+    instrs.push(Instr::J("ge", "my_error".to_string()));
+
+    instrs.push(Instr::And(Val::Reg(Reg::RAX), Val::Imm32(-8)));
+    instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::EffectiveAddr(Reg::RAX, Reg::RBX, 4, 8)));
 }
 
 fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
     match e {
         Expr::Number(n) => instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(n << 1))),
-        Expr::Boolean(n) => instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(if *n {3} else {1}))),
+        Expr::Boolean(n) => instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(if *n {7} else {3}))),
         Expr::Id(id) => {
             let v = *c.env.get(id).expect(format!("Unbound variable identifier {id}").as_str());
             let target = match v {

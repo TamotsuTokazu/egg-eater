@@ -1,0 +1,20 @@
+(fun (pair x y) (tuple x y))
+(fun (sum x y) (tuple (+ (index x 0) (index y 0)) (+ (index x 1) (index y 1))))
+(let (
+    (x (pair 1 2))
+    (y (pair 30 40))
+    (z (pair 500 600))
+    (a (sum x y))
+    (b (sum x z))
+)
+(block
+    (print x)
+    (print y)
+    (print z)
+    (print a)
+    (print b)
+    (print (pair -1 -2))
+    (print (sum a b))
+    (print (pair (tuple) (tuple)))
+    0
+))
