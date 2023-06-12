@@ -43,9 +43,9 @@ fn snek_str(val: i64, seen: &mut Vec<i64>) -> String {
     else if val & 1 == 1 {
         if seen.contains(&val) { "(...)".to_string() }
         else {
-            seen.push(val);
             let addr = (val - 1) as *const i64;
             let len = unsafe { *addr } >> 1;
+            seen.push(val);
             let s = (1..len as isize + 1).map(|i| snek_str(unsafe {*addr.offset(i)}, seen)).collect::<Vec<_>>().join(" ");
             seen.pop();
             format!("({})", s)
@@ -59,6 +59,44 @@ fn snek_print(val: i64) -> i64 {
     println!("{}", snek_str(val, &mut seen));
     val
 }
+
+fn snek_structural_eq(default: bool, v1: i64, v2: i64, pending: &mut Vec<(i64, i64)>) -> bool {
+    if v1 == v2 { true }
+    else if v1 & 3 == 1 && v2 & 3 == 1 {
+        if v1 == 1 && v2 == 1 {
+            true
+        } else if v1 == 1 || v2 == 1 {
+            false
+        } else if pending.contains(&(v1, v2)) { default }
+        else {
+            let a1 = (v1 - 1) as *const i64;
+            let a2 = (v2 - 1) as *const i64;
+            let l1 = unsafe { *a1 } >> 1;
+            let l2 = unsafe { *a2 } >> 1;
+            if l1 != l2 { false }
+            else {
+                pending.push((v1, v2));
+                for i in 1..l1 as usize + 1 {
+                    if unsafe { !snek_structural_eq(default, *a1.add(i), *a2.add(i), pending) } { return false; }
+                }
+                pending.pop();
+                true
+            }
+        }
+    } else { false }
+}
+
+#[export_name = "\x01snek_structural_eq_true"]
+fn snek_structural_eq_true(v1: i64, v2: i64) -> i64 {
+    let mut pending = Vec::<(i64, i64)>::new();
+    if snek_structural_eq(true, v1, v2, &mut pending) { 7 } else { 3 }
+}
+
+// #[export_name = "\x01snek_structural_eq_false"]
+// fn snek_structural_eq_false(v1: i64, v2: i64) {
+//     let mut pending = Vec<(i64, i64)>::new();
+//     return snek_structural_eq(false, v1, v2, pending);
+// }
 
 fn main() {
     let args: Vec<String> = env::args().collect();

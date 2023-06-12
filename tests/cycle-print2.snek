@@ -1,0 +1,15 @@
+(let (
+    (a (tuple 1 20))
+    (b1 (tuple 1 20))
+    (b2 (tuple 1 20))
+)
+(block
+    (print (tuple a b1 b2))
+    (tuple-set! a 1 a)
+    (tuple-set! b1 1 b2)
+    (tuple-set! b2 1 b1)
+    (print (tuple a b1 b2))
+    (tuple-set! b1 0 9000)
+    (print (tuple a b1 b2))
+    0
+))

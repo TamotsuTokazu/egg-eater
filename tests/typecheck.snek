@@ -1,0 +1,13 @@
+(let (
+    (a 1)
+    (b true)
+    (c (tuple))
+    (d (tuple 1))
+)
+(block
+    (print (tuple (isnum a) (isbool a) (istuple a)))
+    (print (tuple (isnum b) (isbool b) (istuple b)))
+    (print (tuple (isnum c) (isbool c) (istuple c)))
+    (print (tuple (isnum d) (isbool d) (istuple d)))
+    0
+))

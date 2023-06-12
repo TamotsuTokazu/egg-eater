@@ -1,0 +1,18 @@
+(let (
+    (a (tuple 1 20))
+    (b (tuple 3 40))
+)
+(block
+    (print (= a b))
+    (tuple-set! b 0 1)
+    (print (= a b))
+    (tuple-set! a 1 a)
+    (print (= a b))
+    (tuple-set! b 1 b)
+    (print (= a b))
+    (tuple-set! a 1 b)
+    (print (= a b))
+    (tuple-set! b 1 a)
+    (print (= a b))
+    0
+))

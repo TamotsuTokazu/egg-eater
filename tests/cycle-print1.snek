@@ -1,0 +1,17 @@
+(let (
+    (a (tuple 1 20))
+    (b (tuple 3 40))
+    (c (tuple -5))
+)
+(block
+    (print (tuple a b c))
+    (tuple-set! a 0 b)
+    (print (tuple a b c))
+    (tuple-set! b 1 a)
+    (print (tuple a b c))
+    (tuple-set! a 0 a)
+    (print (tuple a b c))
+    (tuple-set! c 0 c)
+    (print (tuple a b c))
+    0
+))

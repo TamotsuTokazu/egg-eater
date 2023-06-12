@@ -14,6 +14,7 @@ enum Op1 {
     Sub1,
     IsNum,
     IsBool,
+    IsTuple,
     Print,
 }
 
@@ -27,6 +28,8 @@ enum Op2 {
     GreaterEqual,
     Less,
     LessEqual,
+    StEq,
+    // StEqEq,
 }
 
 #[derive(Debug)]
@@ -44,7 +47,8 @@ enum Expr {
     Block(Vec<Expr>),
     Call(String, Vec<Expr>),
     Tuple(Vec<Expr>),
-    Index(Box<Expr>, Box<Expr>),
+    TupleGet(Box<Expr>, Box<Expr>),
+    TupleSet(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 struct Func {
@@ -55,8 +59,8 @@ struct Func {
 
 struct Prog(Vec<Func>, Expr);
 
-const OP1NAMES: [&str; 5] = ["add1", "sub1", "isnum", "isbool", "print"];
-const OP2NAMES: [&str; 8] = ["+", "-", "*", "<", ">", "<=", ">=", "="];
+const OP1NAMES: [&str; 6] = ["add1", "sub1", "isnum", "isbool", "istuple", "print"];
+const OP2NAMES: [&str; 9] = ["+", "-", "*", "<", ">", "<=", ">=", "=", "=="];
 const KEYWORDS: [&str; 8] = ["true", "false", "input", "let", "if", "block", "loop", "break"];
 
 fn check_id(s: &str) -> bool {
@@ -90,24 +94,33 @@ fn parse_expr(s: &Sexp) -> Expr {
             [Sexp::Atom(S(op)), exprs @ ..] if op == "block" => Expr::Block(exprs.into_iter().map(parse_expr).collect()),
             [Sexp::Atom(S(op))] if op == "tuple" => Expr::Tuple(vec![]),
             [Sexp::Atom(S(op)), exprs @ ..] if op == "tuple" => Expr::Tuple(exprs.into_iter().map(parse_expr).collect()),
-            [Sexp::Atom(S(op)), e] if OP1NAMES.contains(&op.as_str()) => match op.as_str() {
-                "add1" => Expr::UnOp(Op1::Add1, Box::new(parse_expr(e))),
-                "sub1" => Expr::UnOp(Op1::Sub1, Box::new(parse_expr(e))),
-                "isnum" => Expr::UnOp(Op1::IsNum, Box::new(parse_expr(e))),
-                "isbool" => Expr::UnOp(Op1::IsBool, Box::new(parse_expr(e))),
-                "print" => Expr::UnOp(Op1::Print, Box::new(parse_expr(e))),
-                _ => panic!("Invalid unary operator"),
-            },
-            [Sexp::Atom(S(op)), e1, e2] if OP2NAMES.contains(&op.as_str()) => match op.as_str() {
-                "+" => Expr::BinOp(Op2::Plus, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
-                "-" => Expr::BinOp(Op2::Minus, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
-                "*" => Expr::BinOp(Op2::Times, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
-                "<" => Expr::BinOp(Op2::Less, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
-                ">" => Expr::BinOp(Op2::Greater, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
-                "<=" => Expr::BinOp(Op2::LessEqual, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
-                ">=" => Expr::BinOp(Op2::GreaterEqual, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
-                "=" => Expr::BinOp(Op2::Equal, Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
-                _ => panic!("Unreachable branch"),
+            [Sexp::Atom(S(op)), e] if OP1NAMES.contains(&op.as_str()) => {
+                let o = match op.as_str() {
+                    "add1" => Op1::Add1,
+                    "sub1" => Op1::Sub1,
+                    "isnum" => Op1::IsNum,
+                    "isbool" => Op1::IsBool,
+                    "istuple" => Op1::IsTuple,
+                    "print" => Op1::Print,
+                    _ => panic!("Invalid unary operator"),
+                };
+                Expr::UnOp(o, Box::new(parse_expr(e)))
+            }
+            [Sexp::Atom(S(op)), e1, e2] if OP2NAMES.contains(&op.as_str()) => {
+                let o = match op.as_str() {
+                    "+" => Op2::Plus,
+                    "-" => Op2::Minus,
+                    "*" => Op2::Times,
+                    "<" => Op2::Less,
+                    ">" => Op2::Greater,
+                    "<=" => Op2::LessEqual,
+                    ">=" => Op2::GreaterEqual,
+                    "=" => Op2::StEq,
+                    "==" => Op2::Equal,
+                    // "===" => Op2::StEqEq,
+                    _ => panic!("Unreachable branch"),
+                };
+                Expr::BinOp(o, Box::new(parse_expr(e1)), Box::new(parse_expr(e2)))
             },
             [Sexp::Atom(S(op)), e1, e2] if op == "let" => match e1 {
                     Sexp::List(b) if !b.is_empty() => Expr::Let(b.iter().map(parse_bind).collect(), Box::new(parse_expr(e2))),
@@ -117,7 +130,8 @@ fn parse_expr(s: &Sexp) -> Expr {
                     Sexp::Atom(S(n)) => Expr::Set(n.to_string(), Box::new(parse_expr(e2))),
                     _ => panic!("Invalid set! expression"),
                 },
-            [Sexp::Atom(S(op)), e1, e2] if op == "index" => Expr::Index(Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
+            [Sexp::Atom(S(op)), e1, e2] if op == "tuple-get" => Expr::TupleGet(Box::new(parse_expr(e1)), Box::new(parse_expr(e2))),
+            [Sexp::Atom(S(op)), e1, e2, e3] if op == "tuple-set!" => Expr::TupleSet(Box::new(parse_expr(e1)), Box::new(parse_expr(e2)), Box::new(parse_expr(e3))),
             [Sexp::Atom(S(op)), e] if op == "loop" => Expr::Loop(Box::new(parse_expr(e))),
             [Sexp::Atom(S(op)), e] if op == "break" => Expr::Break(Box::new(parse_expr(e))),
             [Sexp::Atom(S(op)), cond, thn, els] if op == "if" => Expr::If(
@@ -140,7 +154,7 @@ fn parse_func(f: &Sexp) -> Func {
                 let args: Vec<String> = b[1..].iter().map(|e| if let Sexp::Atom(S(s)) = e { s.to_string() } else {panic!("Invalid definition")}).collect();
                 if let Sexp::Atom(S(n)) = &b[0] {
                     if args.iter().all(|s| check_id(s)) {
-                        Func {name: n.to_string(), args: args, expr: parse_expr(e)}
+                        Func {name: n.to_string(), args, expr: parse_expr(e)}
                     } else {
                         panic!("Invalid definition")
                     }
@@ -178,8 +192,8 @@ enum Val {
 enum Reg {
     RAX,
     RBX,
-    RCX,
-    RDX,
+    // RCX,
+    // RDX,
     RSI,
     RDI,
     RSP,
@@ -205,6 +219,7 @@ enum Instr<'a> {
     Ret,
     J(&'a str, String),
     Cmov(&'a str, Val, Val),
+    Lea(Val, Val),
     Label(String),
 }
 
@@ -271,12 +286,20 @@ fn compile_unary_op(o: &Op1, e1: &Expr, c: &Context, mc: &mut MutContext, instrs
             instrs.push(Instr::Cmov("e", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
         },
         Op1::IsBool => {
-            instrs.push(Instr::Test(Val::Reg(Reg::RAX), Val::Imm64(1)));
+            instrs.push(Instr::And(Val::Reg(Reg::RAX), Val::Imm64(3)));
+            instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::Imm64(3)));
             instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(3)));
             instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm64(7)));
-            instrs.push(Instr::Cmov("ne", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
+            instrs.push(Instr::Cmov("e", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
         },
-        Op1::Print => compile_external_call("snek_print", c, mc, instrs),
+        Op1::IsTuple => {
+            instrs.push(Instr::And(Val::Reg(Reg::RAX), Val::Imm64(3)));
+            instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::Imm64(1)));
+            instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm64(3)));
+            instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm64(7)));
+            instrs.push(Instr::Cmov("e", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
+        },
+        Op1::Print => compile_external_call_1(Val::Reg(Reg::RAX), "snek_print", c, mc, instrs),
     }
 }
 
@@ -285,6 +308,9 @@ fn compile_binary_op(o: &Op2, e1: &Expr, e2: &Expr, c: &Context, mc: &mut MutCon
         compile_expr(e2, c, mc, instrs);
         instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
         compile_expr(e1, &Context { si: c.si + 1, ..*c }, mc, instrs);
+
+        // type check removed
+
         // instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Reg(Reg::RAX)));
         // instrs.push(Instr::Xor(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RBP, -8 * c.si)));
         // instrs.push(Instr::Test(Val::Reg(Reg::RBX), Val::Imm32(1)));
@@ -295,37 +321,48 @@ fn compile_binary_op(o: &Op2, e1: &Expr, e2: &Expr, c: &Context, mc: &mut MutCon
         instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(3)));
         instrs.push(Instr::Cmov("e", Val::Reg(Reg::RAX), Val::Reg(Reg::RBX)));
     } else {
-        compile_expr(e2, c, mc, instrs);
-        check_num(instrs);
-        instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
-        compile_expr(e1, &Context { si: c.si + 1, ..*c }, mc, instrs);
-        check_num(instrs);
-        let i = match o {
-            Op2::Plus => Instr::Add(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)),
-            Op2::Minus => Instr::Sub(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)),
-            Op2::Times => {
-                instrs.push(Instr::Sar(Val::Reg(Reg::RAX), Val::Imm32(1)));
-                Instr::Imul(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si))
-            },
+        match o {
+            Op2::StEq => {
+                compile_expr(e2, c, mc, instrs);
+                instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
+                compile_expr(e1, &Context { si: c.si + 1, ..*c }, mc, instrs);
+                compile_external_call_2(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si), "snek_structural_eq_true", c, mc, instrs);
+            }
+            // Op2::StEqEq => compile_external_call_2(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si), "snek_structural_eq_false", c, mc, instrs),
             _ => {
+                compile_expr(e2, c, mc, instrs);
+                check_num(instrs);
+                instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
+                compile_expr(e1, &Context { si: c.si + 1, ..*c }, mc, instrs);
+                check_num(instrs);
+                let i = match o {
+                    Op2::Plus => Instr::Add(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)),
+                    Op2::Minus => Instr::Sub(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)),
+                    Op2::Times => {
+                        instrs.push(Instr::Sar(Val::Reg(Reg::RAX), Val::Imm32(1)));
+                        Instr::Imul(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si))
+                    },
+                    _ => {
 
-                // bool here
-                instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)));
-                instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm32(7)));
-                instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(3)));
-                let c = match o {
-                    Op2::Less => "l",
-                    Op2::LessEqual => "le",
-                    Op2::Greater => "g",
-                    Op2::GreaterEqual => "ge",
-                    _ => panic!("Unreachable branch"),
+                        // bool here
+                        instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::RegOffset(Reg::RBP, -8 * c.si)));
+                        instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::Imm32(7)));
+                        instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::Imm32(3)));
+                        let c = match o {
+                            Op2::Less => "l",
+                            Op2::LessEqual => "le",
+                            Op2::Greater => "g",
+                            Op2::GreaterEqual => "ge",
+                            _ => panic!("Unreachable branch"),
+                        };
+                        Instr::Cmov(c, Val::Reg(Reg::RAX), Val::Reg(Reg::RBX))
+                    },
                 };
-                Instr::Cmov(c, Val::Reg(Reg::RAX), Val::Reg(Reg::RBX))
+                instrs.push(i);
+                if matches!(o, Op2::Plus | Op2::Minus | Op2::Times) {
+                    check_overflow(instrs);
+                }
             },
-        };
-        instrs.push(i);
-        if matches!(o, Op2::Plus | Op2::Minus | Op2::Times) {
-            check_overflow(instrs);
         }
     }
 }
@@ -415,7 +452,46 @@ fn compile_index(e: &Expr, i: &Expr, c: &Context, mc: &mut MutContext, instrs: &
     instrs.push(Instr::J("ge", "my_error".to_string()));
 
     instrs.push(Instr::And(Val::Reg(Reg::RAX), Val::Imm32(-8)));
-    instrs.push(Instr::Mov(Val::Reg(Reg::RAX), Val::EffectiveAddr(Reg::RAX, Reg::RBX, 4, 8)));
+    instrs.push(Instr::Lea(Val::Reg(Reg::RAX), Val::EffectiveAddr(Reg::RAX, Reg::RBX, 4, 8)));
+}
+
+fn compile_tuple_set(e: &Expr, i: &Expr, ve: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
+    compile_expr(i, c, mc, instrs);
+    check_num(instrs);
+    instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
+    compile_expr(e, &Context { si: c.si + 1, ..*c }, mc, instrs);
+
+    // check tuple
+    check_mem(instrs);
+
+    // index-out-of-range error code
+    instrs.push(Instr::Mov(Val::Reg(Reg::RSI), Val::Imm64(3)));
+
+    // check empty
+    instrs.push(Instr::Cmp(Val::Reg(Reg::RAX), Val::Imm32(1)));
+    instrs.push(Instr::J("e", "my_error".to_string()));
+
+    // load index
+    instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RBP, -8 * c.si)));
+    instrs.push(Instr::And(Val::Reg(Reg::RAX), Val::Imm32(-8)));
+
+    // check len
+    instrs.push(Instr::Cmp(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RAX, 0)));
+    instrs.push(Instr::J("ge", "my_error".to_string()));
+
+    // compute addr
+    instrs.push(Instr::And(Val::Reg(Reg::RAX), Val::Imm32(-8)));
+    instrs.push(Instr::Lea(Val::Reg(Reg::RAX), Val::EffectiveAddr(Reg::RAX, Reg::RBX, 4, 8)));
+    instrs.push(Instr::Mov(Val::RegOffset(Reg::RBP, -8 * c.si), Val::Reg(Reg::RAX)));
+
+    // compute value
+    compile_expr(ve, &Context { si: c.si + 1, ..*c }, mc, instrs);
+
+    // load addr
+    instrs.push(Instr::Mov(Val::Reg(Reg::RBX), Val::RegOffset(Reg::RBP, -8 * c.si)));
+
+    // set value
+    instrs.push(Instr::Mov(Val::RegOffset(Reg::RBX, 0), Val::Reg(Reg::RAX)));
 }
 
 fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
@@ -456,7 +532,8 @@ fn compile_expr(e: &Expr, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Ins
         },
         Expr::Call(n, args) => compile_call(n, args, c, mc, instrs),
         Expr::Tuple(es) => compile_tuple(es, c, mc, instrs),
-        Expr::Index(e1, i) => compile_index(e1, i, c, mc, instrs),
+        Expr::TupleGet(e1, i) => compile_index(e1, i, c, mc, instrs),
+        Expr::TupleSet(e1, i, e2) => compile_tuple_set(e1, i, e2, c, mc, instrs),
     }
 }
 
@@ -478,15 +555,28 @@ fn compile_call(n: &str, args: &Vec<Expr>, c: &Context, mc: &mut MutContext, ins
     instrs.push(Instr::Add(Val::Reg(Reg::RSP), Val::Imm32(8 * (args.len() as i32 + ((args.len() % 2 == 1) == c.aligned) as i32))));
 }
 
-// argument is in RAX
-fn compile_external_call(n: &str, c: &Context, mc: &mut MutContext, instrs: &mut Vec<Instr>) {
+// argument is in a1
+fn compile_external_call_1(a1: Val, n: &str, c: &Context, _mc: &mut MutContext, instrs: &mut Vec<Instr>) {
     // compile_expr(arg1, c, mc, instrs);
     if c.aligned { instrs.push(Instr::Sub(Val::Reg(Reg::RSP), Val::Imm32(8))); }
     instrs.push(Instr::Push(Val::Reg(Reg::RDI)));
-    instrs.push(Instr::Mov(Val::Reg(Reg::RDI), Val::Reg(Reg::RAX)));
+    instrs.push(Instr::Mov(Val::Reg(Reg::RDI), a1));
     instrs.push(Instr::Call(n.to_string()));
     instrs.push(Instr::Pop(Val::Reg(Reg::RDI)));
     if c.aligned { instrs.push(Instr::Add(Val::Reg(Reg::RSP), Val::Imm32(8))); }
+}
+
+fn compile_external_call_2(a1: Val, a2: Val, n: &str, c: &Context, _mc: &mut MutContext, instrs: &mut Vec<Instr>) {
+    // compile_expr(arg1, c, mc, instrs);
+    if !c.aligned { instrs.push(Instr::Sub(Val::Reg(Reg::RSP), Val::Imm32(8))); }
+    instrs.push(Instr::Push(Val::Reg(Reg::RDI)));
+    instrs.push(Instr::Push(Val::Reg(Reg::RSI)));
+    instrs.push(Instr::Mov(Val::Reg(Reg::RDI), a1));
+    instrs.push(Instr::Mov(Val::Reg(Reg::RSI), a2));
+    instrs.push(Instr::Call(n.to_string()));
+    instrs.push(Instr::Pop(Val::Reg(Reg::RSI)));
+    instrs.push(Instr::Pop(Val::Reg(Reg::RDI)));
+    if !c.aligned { instrs.push(Instr::Add(Val::Reg(Reg::RSP), Val::Imm32(8))); }
 }
 
 fn dep(e: &Expr) -> i32 {
@@ -502,7 +592,9 @@ fn dep(e: &Expr) -> i32 {
         Expr::Break(e1) => dep(e1),
         Expr::Call(_, es) => es.iter().map(dep).max().unwrap_or_default(),
         Expr::Tuple(es) => es.iter().enumerate().map(|(i, e)| dep(e) + i as i32).max().unwrap_or_default().max(es.len() as i32),
-        Expr::Index(e1, e2) => dep(e2).max(dep(e1) + 1)
+        Expr::TupleGet(e1, e2) => dep(e2).max(dep(e1) + 1),
+        // First index, then tuple addr, value at last
+        Expr::TupleSet(e1, e2, e3) => dep(e2).max(dep(e1) + 1).max(dep(e3) + 1),
     }
 }
 
@@ -534,6 +626,7 @@ fn instr_to_str(i: &Instr) -> String {
         Instr::Leave => "leave\n".to_string(),
         Instr::Ret => "ret\n".to_string(),
         Instr::Cmov(c, u, v) => format!("cmov{} {}, {}\n", c, val_to_str(u), val_to_str(v)),
+        Instr::Lea(u, v) => format!("lea {}, {}\n", val_to_str(u), val_to_str(v)),
         Instr::J(c, l) if *c == "" => format!("jmp {l}\n"),
         Instr::J(c, l) => format!("j{} {}\n", *c, l),
         Instr::Label(l) => format!("{l}:\n"),
@@ -565,8 +658,8 @@ fn reg_to_str(r: &Reg) -> &str {
     match r {
         Reg::RAX => "rax",
         Reg::RBX => "rbx",
-        Reg::RCX => "rcx",
-        Reg::RDX => "rdx",
+        // Reg::RCX => "rcx",
+        // Reg::RDX => "rdx",
         Reg::RSI => "rsi",
         Reg::RDI => "rdi",
         Reg::RSP => "rsp",
@@ -596,7 +689,7 @@ fn compile(p: &Prog) -> String {
     instrs.push(Instr::Label("our_code_starts_here".to_string()));
     instrs.push(Instr::Mov(Val::Reg(Reg::R15), Val::Reg(Reg::RSI)));
 
-    let mut env: im::HashMap<String, i32> = im::HashMap::unit("input".to_string(), i32::MAX);
+    let env: im::HashMap<String, i32> = im::HashMap::unit("input".to_string(), i32::MAX);
     compile_func_body("__our_code_starts_here", e, &Context { si: 1, env: &env, brake: &nul_brake, fnames: &fnames, aligned: true }, &mut mc, &mut instrs);
     instrs.iter().map(instr_to_str).collect::<String>()
 }
@@ -619,6 +712,7 @@ fn main() -> std::io::Result<()> {
 section .text
 extern snek_error
 extern snek_print
+extern snek_structural_eq_true
 my_error:
 and rsp, -16
 mov rdi, rsi

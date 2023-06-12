@@ -1,0 +1,10 @@
+(fun (f n) (if (== n 0)
+(tuple)
+(let ((t (f (sub1 n)))) (tuple t t))
+))
+(let (
+    (a (f input))
+    (b (f input))
+)
+(= a b)
+)

@@ -1,0 +1,23 @@
+(let (
+    (a1 (tuple 1 20))
+    (a01 a1)
+    (a2 (tuple 1 20))
+    (b (tuple 3 40))
+    (f11 (tuple a1 a1))
+    (f011 f11)
+    (f111 (tuple a1 a1))
+    (f12 (tuple a1 a2))
+    (f22 (tuple a2 a2))
+    (g (tuple a1 b))
+)
+(block
+    (print (tuple (= a1 a01) (== a1 a01)))
+    (print (tuple (= a1 a2) (== a1 a2)))
+    (print (tuple (= a1 b) (== a1 b)))
+    (print (tuple (= f11 f011) (== f11 f011)))
+    (print (tuple (= f11 f111) (== f11 f111)))
+    (print (tuple (= f11 f12) (== f11 f12)))
+    (print (tuple (= f11 f22) (== f11 f22)))
+    (print (tuple (= f11 g) (== f11 g)))
+    0
+))
